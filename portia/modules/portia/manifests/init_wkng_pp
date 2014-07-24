@@ -1,0 +1,101 @@
+
+class portia { 
+   exec { "update-apt":
+        command => "sudo /usr/bin/apt-get update",
+    }
+
+    # Let's install the dependecies
+    package {
+        ["python-pip", "python-dev", "libxml2-dev", "libxslt1-dev", "libffi-dev", "libssl-dev"]:
+        ensure => installed,
+        require => Exec['update-apt'] # The system update needs to run first
+    }
+
+
+$portia_dir = "/portia"
+
+file { $portia_dir:
+	ensure => directory,
+	mode   => '0777'
+}
+
+	exec { "clone":
+		command => "git clone https://github.com/scrapinghub/portia.git $portia_dir",
+		unless => ["test -d /portia"],
+		require => File[$portia_dir]
+	}
+
+#	file { $portia_dir:
+#		require => Exec["clone"]
+#	}
+
+
+file {"$portia_dir/install_venv.sh":
+	ensure => present,
+	mode => '0777',
+	source => 'puppet:///modules/portia/install_venv.sh'
+}
+
+exec { "$portia_dir/install_venv.sh":
+command => "/bin/bash $portia_dir/install_venv.sh",
+require => File["$portia_dir/install_venv.sh"]
+}
+
+
+file {"$portia_dir/venv.sh":
+	ensure => present,
+	mode => '0777',
+	source => 'puppet:///modules/portia/venv.sh'
+}
+
+#exec { "$portia_dir/venv.sh":
+#command => "/bin/bash $portia_dir/venv.sh",
+#require => File["$portia_dir/venv.sh"]
+#}
+
+
+# Let's install the project dependecies from pip
+    exec { "pip-install-requirements":
+        command => '/bin/bash -c "source /portia/venv/bin/activate && /usr/bin/pip install -r requirements.txt"',
+	cwd => '/portia/slyd',
+	user => 'root',
+        tries => 2,
+        timeout => 600, # Too long, but this can take awhile
+        require => Package['python-pip', 'python-dev'], # The package dependecies needs to run first
+        logoutput => on_failure,
+    }
+
+#Run Slyd
+    exec { "run-slyd":
+        command => '/bin/bash -c "source /portia/venv/bin/activate && twistd -n slyd"',
+	cwd => '/portia/slyd',
+	user => 'root',
+        logoutput => on_failure
+	}
+
+
+
+
+#file { "/etc/init/slyd.conf":
+#ensure =>present,
+#owner=>'root',
+#group=>'root',
+#mode=>'0777',
+#source=>'puppet:///modules/portia/slyd.conf'
+#}
+#Slyd service
+#file { "/tmp/slyd.sh":
+#ensure =>present,
+#owner=>'root',
+#group=>'root',
+#mode=>'777',
+#source=>'puppet:///modules/portia/slyd.sh'
+#}
+
+#exec { "/tmp/slyd.sh":
+#command =>"/tmp/slyd.sh", 
+#require => File['/tmp/slyd.sh']
+#}
+
+}
+
